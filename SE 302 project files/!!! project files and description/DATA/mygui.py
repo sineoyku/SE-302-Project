@@ -15,6 +15,7 @@ class App:
         self.addMenu()
         self.addTabs()
         self.addFrames()
+        self.buildResultsTab()
 
 
 
@@ -53,7 +54,36 @@ class App:
             self.log(f"⚠️ {file_type} import cancelled.")
 
 
+
+    # ---------------- Dummy Generater ---------------- to see if it works
+    def generateTable(self):
         
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+
+        
+        columns = ("Day", "Slot", "Course", "Rooms", "Students")
+        self.tree["columns"] = columns
+
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=140, anchor="center")
+
+        # dummy sonuçlar
+        dummy_results = [
+            ("Day 1", "Slot 1", "CSE101", "A1 + A2", 120),
+            ("Day 1", "Slot 2", "MAT101", "B1", 60),
+            ("Day 2", "Slot 1", "PHY101", "C1", 80),
+            ("Day 3", "Slot 3", "ENG201", "D1", 45),
+        ]
+
+        for row in dummy_results:
+            self.tree.insert("", "end", values=row)
+
+        self.log("📊 Exam table generated (dummy data).")
+
+        # Results tab a gec
+        self.notebook.select(self.tab2)
 
         
 
@@ -68,6 +98,52 @@ class App:
 
         self.notebook.add(self.tab1, text="                          IMPORT TAB                     ")
         self.notebook.add(self.tab2, text="                          RESULTS TAB                    ")
+
+    def buildResultsTab(self):
+        # main container
+        main_frame = Frame(
+            self.tab2,
+            bg="#808080",
+            relief="sunken",
+            border=12
+        )
+        main_frame.pack(expand=True, fill="both", padx=20, pady=20)
+
+       
+        results_frame = Frame(main_frame, bg="#b0b0b0")
+        results_frame.pack(expand=True, fill="both", padx=10, pady=10)
+
+        Label(
+            results_frame,
+            text="Exam Schedule Results",
+            font=("calibri", 22, "bold"),
+            bg="#b0b0b0"
+        ).pack(pady=(15, 10))
+
+        
+        table_lf = ttk.LabelFrame(
+            results_frame,
+            text="Generated Exam Table",
+            padding=10
+        )
+        table_lf.pack(expand=True, fill="both", padx=20, pady=15)
+
+        
+        self.tree = ttk.Treeview(table_lf, show="headings")
+        self.tree.pack(side="left", expand=True, fill="both")
+
+        
+        yscroll = ttk.Scrollbar(
+            table_lf,
+            orient="vertical",
+            command=self.tree.yview
+        )
+        yscroll.pack(side="right", fill="y")
+
+        self.tree.configure(yscrollcommand=yscroll.set)
+
+
+
 
     # ---------------------- LOG ---------------------
     def log(self, message):
@@ -278,7 +354,7 @@ class App:
             fg="white",
             activebackground="black",
             activeforeground="white",
-            #command=self.generateTable
+            command=self.generateTable
         ).pack(pady=15)
 
 
@@ -302,3 +378,4 @@ if __name__ == "__main__":
     window = Tk()
     app = App(window)
     window.mainloop()
+
