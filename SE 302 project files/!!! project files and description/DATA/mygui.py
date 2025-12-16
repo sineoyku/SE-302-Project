@@ -16,6 +16,9 @@ class App:
         self.addTabs()
         self.addFrames()
 
+
+
+
     # ---------------- MENU ----------------
     def addMenu(self):
         menubar = Menu(self.window)
@@ -59,10 +62,20 @@ class App:
         self.notebook.add(self.tab2, text="                          RESULTS TAB                    ")
 
         
+    # ---------------- BUTTON FUNCTIONS ----------------
+    def deleteSlotButton(self):
+        selected = self.timeslots.curselection()  # seçili satırı al
+        if selected:
+            self.timeslots.delete(selected[0])
+            self.timeslots.config(height=self.timeslots.size())
+
+     
+    
 
 
     # ---------------- FRAME + BUTTONS ----------------
 
+   
 
 
     def addFrames(self):
@@ -111,6 +124,32 @@ class App:
         self.exam_days.insert(0, "5")
         self.exam_days.grid(row=1, column=1, sticky="w", pady=5, padx=10)
 
+        # Time Slots
+        ttk.Label(settings_lf, text="Time Slots (Hours):").grid(row=2,column=0,sticky="w",pady=12)
+        
+        self.timeslots = Listbox(settings_lf,fg="black",
+                  width=22)
+        self.timeslots.insert(0,"09:00-11:00")
+        self.timeslots.insert(1,"12:00-14:00")
+
+        self.timeslots.config(height=self.timeslots.size())
+
+        self.timeslots.grid(row=2, column=1, sticky="w", pady=5, padx=10)
+
+        addButton = Button(settings_lf,text="+",background="#078013",
+                           width=4,height=1,relief="raised",
+                           font=("calibri",12,"bold"),
+                           activebackground="black",
+                           activeforeground="white").grid(row=3, column=1, sticky="e", pady=5, padx=10,)
+        
+        deleteButton = Button(settings_lf,text="-",background="#7A0808",
+                              width=4,height=1,relief="sunken",
+                              font=("calibri",12,"bold"),
+                              activebackground="black",
+                              activeforeground="white",
+                              command=self.deleteSlotButton).grid(row=3, column=1, sticky="e", pady=5, padx=55)
+        
+
         # ================================================
 
         Label(
@@ -125,7 +164,9 @@ class App:
             text="Import Classrooms.csv",
             font=("calibri", 12),
             width=30,
-            command=self.openfile
+            command=self.openfile,
+            activebackground="black",
+            activeforeground="white"
         ).pack(pady=6)
 
         Button(
@@ -133,7 +174,9 @@ class App:
             text="Import Lessons.csv",
             font=("calibri", 12),
             width=30,
-            command=self.openfile
+            command=self.openfile,
+            activebackground="black",
+            activeforeground="white"
         ).pack(pady=6)
 
         Button(
@@ -141,7 +184,9 @@ class App:
             text="Import Students.csv",
             font=("calibri", 12),
             width=30,
-            command=self.openfile
+            command=self.openfile,
+            activebackground="black",
+            activeforeground="white"
         ).pack(pady=6)
 
         # ---------------- SAĞ PANEL ----------------
@@ -157,8 +202,7 @@ class App:
 
         self.log_box = Text(right_frame)
         self.log_box.pack(expand=True, fill="both", padx=10, pady=10)
-
-
+        
 
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
