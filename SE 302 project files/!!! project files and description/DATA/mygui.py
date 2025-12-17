@@ -1,8 +1,12 @@
+import threading
 from tkinter import *
 from tkinter import filedialog
 from tkinter import ttk
+from tkinter import messagebox
 from tkcalendar import DateEntry   
 from datetime import date
+from logic import ScheduleSystem
+
 
 
 
@@ -12,10 +16,12 @@ class App:
         self.window.title("Tkinter App")
         self.window.geometry("800x700")
 
+        self.system = ScheduleSystem()
         self.addMenu()
         self.addTabs()
         self.addFrames()
         self.buildResultsTab()
+        
 
 
 
@@ -40,28 +46,65 @@ class App:
         editMenu.add_command(label="Exit", command=self.window.quit)
 
     # ---------------- FILE OPEN ----------------
-    def openfile(self,file_type="FILE"):
+    def openfile(self, file_type="FILE"):
         filepath = filedialog.askopenfilename(
-            title="Open the file calmly",
+            title="Open file",
             filetypes=(("CSV files", "*.csv"), ("All Files", "*.*"))
         )
 
-        if filepath:
-            filename = filepath.split("/")[-1]
-            self.log(f"📂 {file_type} imported: {filename}")
-            self.log(f"    Path: {filepath}")
-        else:
+        if not filepath:
             self.log(f"⚠️ {file_type} import cancelled.")
+            return
+
+        if file_type == "Classrooms":
+            msg = self.system.load_classrooms_regex(filepath)
+        elif file_type == "Lessons":
+            msg = self.system.load_courses_regex(filepath)
+        elif file_type == "Students":
+            msg = self.system.load_all_students_regex(filepath)
+        else:
+            msg = "File loaded."
+
+        self.log(msg)
+
+    # ----------------  Generater ---------------- 
+    def startGenerate(self):
+        self.log("⏳ Generating exam schedule...")
+        
+        # Progress baslıyo
+        self.window.config(cursor="watch")
+        
+        # Ayrı thread
+        t = threading.Thread(target=self.runGenerate, daemon=True)
+        t.start()
+    
+    def runGenerate(self):
+        try:
+            self.system.num_days = int(self.exam_days.get())
+            self.system.slots_per_day = self.timeslots.size()
+        except ValueError:
+            self.window.after(0, lambda: messagebox.showerror("Error", "Invalid parameters"))
+            return
+
+        success, msg = self.system.solve()
+
+        
+        self.window.after(0, lambda: self.finishGenerate(success, msg))
 
 
 
-    # ---------------- Dummy Generater ---------------- to see if it works
-    def generateTable(self):
+    def finishGenerate(self, success, msg): #anlamadım ne bu
+        self.window.config(cursor="")
+        self.log(msg)
+
+        if not success:
+            messagebox.showerror("Error", msg)
+            return
+
         
         for i in self.tree.get_children():
             self.tree.delete(i)
 
-        
         columns = ("Day", "Slot", "Course", "Rooms", "Students")
         self.tree["columns"] = columns
 
@@ -69,20 +112,57 @@ class App:
             self.tree.heading(col, text=col)
             self.tree.column(col, width=140, anchor="center")
 
-        # dummy sonuçlar
-        dummy_results = [
-            ("Day 1", "Slot 1", "CSE101", "A1 + A2", 120),
-            ("Day 1", "Slot 2", "MAT101", "B1", 60),
-            ("Day 2", "Slot 1", "PHY101", "C1", 80),
-            ("Day 3", "Slot 3", "ENG201", "D1", 45),
-        ]
+        for c_code, (d, s, rooms) in self.system.assignments.items():
+            course_obj = next(c for c in self.system.courses if c.code == c_code)
+            room_names = " + ".join(r.code for r in rooms)
 
-        for row in dummy_results:
-            self.tree.insert("", "end", values=row)
+            self.tree.insert("", "end", values=(
+                f"Day {d+1}",
+                f"Slot {s+1}",
+                c_code,
+                room_names,
+                len(course_obj.students)
+            ))
 
-        self.log("📊 Exam table generated (dummy data).")
+        self.notebook.select(self.tab2)
 
-        # Results tab a gec
+    
+    def generateTable(self):
+        # Tree temizle
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+
+        # GUI'den parametreleri logic'e aktar
+        self.system.num_days = int(self.exam_days.get())
+        self.system.slots_per_day = self.timeslots.size()
+
+        success, msg = self.system.solve()
+        self.log(msg)
+
+        if not success:
+            messagebox.showerror("Error", msg)
+            return
+
+        columns = ("Day", "Slot", "Course", "Rooms", "Students")
+        self.tree["columns"] = columns
+
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=140, anchor="center")
+
+        for c_code, (d, s, rooms) in self.system.assignments.items():
+            course_obj = next(c for c in self.system.courses if c.code == c_code)
+            room_names = " + ".join(r.code for r in rooms)
+
+            self.tree.insert("", "end", values=(
+                f"Day {d+1}",
+                f"Slot {s+1}",
+                c_code,
+                room_names,
+                len(course_obj.students)
+            ))
+
+        # Results tab’a geç
         self.notebook.select(self.tab2)
 
         
@@ -238,7 +318,7 @@ class App:
             bg="#8c8c8c"
         ).pack(pady=(20, 10))
 
-        # ========= EXAM SETTINGS (YENİ EKLENEN KISIM) =========
+        # ========= EXAM SETTINGS =========
         settings_lf = ttk.LabelFrame(
             left_frame,
             text="Exam Settings",
@@ -354,7 +434,7 @@ class App:
             fg="white",
             activebackground="black",
             activeforeground="white",
-            command=self.generateTable
+            command=self.startGenerate
         ).pack(pady=15)
 
 
@@ -378,4 +458,3 @@ if __name__ == "__main__":
     window = Tk()
     app = App(window)
     window.mainloop()
-
