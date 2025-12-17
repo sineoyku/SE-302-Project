@@ -1,234 +1,379 @@
-# gui.py
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
+import csv
+import re
+from datetime import datetime, timedelta
+
+try:
+    from tkcalendar import DateEntry
+    HAS_CALENDAR = True
+except ImportError:
+    HAS_CALENDAR = False
+
 from logic import ScheduleSystem
 
 class ExamSchedulerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Sınav Programı - Final")
-        self.root.geometry("1100x800")
+        self.root.title("Examtable Manager - Pro UI")
+        self.root.geometry("1280x850")
+
+        self.colors = {
+            "primary": "#546e7a",
+            "primary_light": "#78909c",
+            "bg_main": "#eceff1",
+            "bg_white": "#ffffff",
+            "text_header": "#37474f",
+            "text_body": "#455a64",
+            "selection": "#cfd8dc",
+            "accent_line": "#b0bec5",
+            "success": "#27ae60",
+            "danger": "#e74c3c"
+        }
+
+        self.root.configure(bg=self.colors["bg_main"])
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.configure_styles()
+
         self.system = ScheduleSystem()
-        self.create_menu()
-        self.setup_ui()
+        self.start_date = datetime.now().date()
+        self.slot_times = []
+        self.full_data = []
 
-    def create_menu(self):
-        menubar = tk.Menu(self.root)
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Çıkış", command=self.root.quit)
-        menubar.add_cascade(label="Dosya", menu=file_menu)
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="Yardım", command=self.show_help)
-        menubar.add_cascade(label="Yardım", menu=help_menu)
-        self.root.config(menu=menubar)
+        self.build_layout()
 
-    def setup_ui(self):
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill='both', expand=True, padx=10, pady=10)
-        self.tab_setup = ttk.Frame(notebook)
-        self.tab_results = ttk.Frame(notebook)
-        notebook.add(self.tab_setup, text="Veri Yükleme")
-        notebook.add(self.tab_results, text="Sonuçlar")
-        self.build_setup_tab()
-        self.build_results_tab()
-        self.notebook = notebook
+    def configure_styles(self):
+        self.style.configure("Treeview", background=self.colors["bg_white"],
+                             fieldbackground=self.colors["bg_white"], foreground=self.colors["text_body"],
+                             rowheight=35, font=('Segoe UI', 10))
+        self.style.configure("Treeview.Heading", font=('Segoe UI', 10, 'bold'),
+                             background=self.colors["primary"], foreground=self.colors["bg_white"], relief="flat")
+        self.style.map("Treeview", background=[('selected', self.colors["primary_light"])],
+                       foreground=[('selected', self.colors["bg_white"])])
+        self.style.configure("Accent.TButton", font=('Segoe UI', 10, 'bold'),
+                             background=self.colors["primary"], foreground=self.colors["bg_white"], borderwidth=0)
+        self.style.map("Accent.TButton", background=[('active', self.colors["primary_light"])])
+        self.style.configure("Danger.TButton", font=('Segoe UI', 9, 'bold'),
+                             background=self.colors["danger"], foreground="white", borderwidth=0)
+        self.style.configure("TButton", font=('Segoe UI', 9))
+        self.style.configure("TNotebook", background=self.colors["bg_main"], borderwidth=0)
+        self.style.configure("TNotebook.Tab", font=('Segoe UI', 10, 'bold'), padding=[20, 10],
+                             background="#cfd8dc", foreground=self.colors["text_body"])
+        self.style.map("TNotebook.Tab", background=[('selected', self.colors["primary"])],
+                       foreground=[('selected', self.colors["bg_white"])])
 
-    def build_setup_tab(self):
-        f = ttk.Frame(self.tab_setup, padding=20)
-        f.pack(fill='both', expand=True)
+    def build_layout(self):
+        header_frame = tk.Frame(self.root, bg=self.colors["bg_white"], height=80)
+        header_frame.pack(fill='x', side='top')
+        tk.Frame(header_frame, bg=self.colors["accent_line"], height=2).pack(side='bottom', fill='x')
 
-        lf_cfg = ttk.LabelFrame(f, text="Ayarlar", padding=10)
-        lf_cfg.grid(row=0, column=0, columnspan=2, sticky='ew', pady=5)
+        lbl_title = tk.Label(header_frame, text="EXAMTABLE MANAGER", font=('Segoe UI', 24, 'bold'),
+                             bg=self.colors["bg_white"], fg=self.colors["primary"])
+        lbl_title.pack(pady=20)
 
-        ttk.Label(lf_cfg, text="Gün:").pack(side='left')
-        self.ent_days = ttk.Entry(lf_cfg, width=5)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill='both', expand=True, padx=20, pady=20)
+
+        self.tab_config = tk.Frame(self.notebook, bg=self.colors["bg_white"])
+        self.tab_schedule = tk.Frame(self.notebook, bg=self.colors["bg_white"])
+
+        self.notebook.add(self.tab_config, text="SETTINGS & DATA")
+        self.notebook.add(self.tab_schedule, text="SCHEDULE (RESULT)")
+
+        self.build_config_tab()
+        self.build_schedule_tab()
+
+        self.status_bar = tk.Label(self.root, text="System Ready", bd=1, relief=tk.FLAT, anchor=tk.W,
+                                   bg="#cfd8dc", fg=self.colors["text_body"], padx=10, pady=5)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def build_config_tab(self):
+        container = tk.Frame(self.tab_config, bg=self.colors["bg_white"])
+        container.pack(expand=True, fill='both', padx=50, pady=20)
+
+        lf_style = {"font": ('Segoe UI', 11, 'bold'), "bg": self.colors["bg_white"],
+                    "fg": self.colors["primary"], "padx": 20, "pady": 15}
+
+        # Files
+        frame_files = tk.LabelFrame(container, text="1. Data Files (CSV/TXT)", **lf_style)
+        frame_files.pack(fill='x', pady=10)
+        self.create_file_row(frame_files, "Classroom List:", self.imp_rooms)
+        self.create_file_row(frame_files, "Course List:", self.imp_courses)
+        self.create_file_row(frame_files, "Student List:", self.imp_students)
+
+        # Settings
+        frame_time = tk.LabelFrame(container, text="2. Exam Calendar Settings", **lf_style)
+        frame_time.pack(fill='x', pady=10)
+
+        row1 = tk.Frame(frame_time, bg=self.colors["bg_white"])
+        row1.pack(fill='x', pady=5)
+
+        tk.Label(row1, text="Start Date:", bg=self.colors["bg_white"], width=15, anchor='w').pack(side='left')
+        if HAS_CALENDAR:
+            self.ent_date = DateEntry(row1, width=15, background=self.colors["primary"], foreground='white', date_pattern='yyyy-mm-dd')
+            self.ent_date.pack(side='left', padx=(0, 20))
+        else:
+            self.ent_date = ttk.Entry(row1, width=15)
+            self.ent_date.insert(0, datetime.now().strftime("%Y-%m-%d"))
+            self.ent_date.pack(side='left', padx=(0, 20))
+
+        tk.Label(row1, text="Duration (Days):", bg=self.colors["bg_white"], width=15, anchor='w').pack(side='left')
+        self.ent_days = ttk.Entry(row1, width=10)
         self.ent_days.insert(0, "7")
-        self.ent_days.pack(side='left', padx=5)
+        self.ent_days.pack(side='left')
 
-        ttk.Label(lf_cfg, text="Slot:").pack(side='left')
-        self.ent_slots = ttk.Entry(lf_cfg, width=5)
-        self.ent_slots.insert(0, "5")
-        self.ent_slots.pack(side='left', padx=5)
+        # Slots
+        tk.Label(frame_time, text="Exam Slots (Time Ranges):", bg=self.colors["bg_white"], font=('Segoe UI', 9, 'bold'), anchor='w').pack(fill='x', pady=(10, 0))
+        slot_frame = tk.Frame(frame_time, bg=self.colors["bg_white"])
+        slot_frame.pack(fill='x', pady=5)
 
-        # Checkbox KALDIRILDI
+        self.lst_slots = tk.Listbox(slot_frame, height=5, width=35, borderwidth=1, relief="solid")
+        self.lst_slots.pack(side='left', padx=(0, 10))
 
-        lf_load = ttk.LabelFrame(f, text="Dosyalar", padding=10)
-        lf_load.grid(row=1, column=0, columnspan=2, sticky='ew', pady=10)
+        default_times = ["09:00-11:00", "11:00-13:00", "13:30-15:30", "15:30-17:30"]
+        for t in default_times: self.lst_slots.insert(tk.END, t)
 
-        self.btn_rooms = ttk.Button(
-            lf_load, text="1. SINIFLAR (AllClassrooms.csv)", command=self.imp_rooms
-        )
-        self.btn_rooms.pack(fill='x', pady=2)
+        ctrl_frame = tk.Frame(slot_frame, bg=self.colors["bg_white"])
+        ctrl_frame.pack(side='left', fill='y')
 
-        self.btn_courses = ttk.Button(
-            lf_load, text="2. DERSLER (AttendanceLists.csv)", command=self.imp_courses
-        )
-        self.btn_courses.pack(fill='x', pady=2)
+        self.ent_new_slot = ttk.Entry(ctrl_frame, width=15)
+        self.ent_new_slot.insert(0, "17:30-19:30")
+        self.ent_new_slot.pack(pady=(0, 5))
 
-        self.btn_students = ttk.Button(
-            lf_load, text="3. ÖĞRENCİLER (AllStudents.csv - Opsiyonel)", command=self.imp_students
-        )
-        self.btn_students.pack(fill='x', pady=2)
+        ttk.Button(ctrl_frame, text="Add (+)", command=self.add_slot).pack(fill='x', pady=2)
+        ttk.Button(ctrl_frame, text="Remove (-)", style="Danger.TButton", command=self.remove_slot).pack(fill='x', pady=2)
+        tk.Label(ctrl_frame, text="Format: HH:MM-HH:MM", bg=self.colors["bg_white"], fg="gray", font=('Segoe UI', 8)).pack(pady=5)
 
-        self.log_text = tk.Text(f, height=8, bg="#f0f0f0", state='disabled')
-        self.log_text.grid(row=2, column=0, columnspan=2, pady=5)
+        # Buttons
+        btn_frame = tk.Frame(container, bg=self.colors["bg_white"])
+        btn_frame.pack(pady=20)
+        self.btn_start = ttk.Button(btn_frame, text="GENERATE SCHEDULE", style="Accent.TButton", command=self.start_process)
+        self.btn_start.pack(side='left', padx=10, ipadx=20, ipady=10)
+        self.btn_stop = ttk.Button(btn_frame, text="STOP", command=self.stop_process, state='disabled')
+        self.btn_stop.pack(side='left', padx=10, ipadx=20, ipady=10)
+        self.lbl_log = tk.Label(container, text="", bg=self.colors["bg_white"], fg=self.colors["primary"])
+        self.lbl_log.pack()
 
-        ttk.Button(
-            f, text="HESAPLA", command=self.start_thread
-        ).grid(row=3, column=0, columnspan=2, pady=10, ipady=5, sticky='ew')
+    def add_slot(self):
+        text = self.ent_new_slot.get().strip()
+        pattern = r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]\s*-\s*([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+        if not re.match(pattern, text):
+            return messagebox.showerror("Invalid Format", "Please use format: HH:MM-HH:MM\nExample: 09:00-11:00")
 
-        self.prog_bar = ttk.Progressbar(f, mode='indeterminate')
-        self.prog_bar.grid(row=4, column=0, columnspan=2, sticky='ew')
+        if text in self.lst_slots.get(0, tk.END):
+            return messagebox.showwarning("Duplicate", "This slot is already in the list.")
 
-    def build_results_tab(self):
-        f = ttk.Frame(self.tab_results)
-        f.pack(fill='both', expand=True)
-        ctrl = ttk.Frame(f)
-        ctrl.pack(fill='x', padx=5, pady=5)
+        self.lst_slots.insert(tk.END, text)
+        self.ent_new_slot.delete(0, tk.END)
 
-        self.view_var = tk.StringVar(value="Günlük Görünüm")
-        cb = ttk.Combobox(
-            ctrl,
-            textvariable=self.view_var,
-            values=["Günlük Görünüm", "Ders Görünümü", "Sınıf Görünümü", "Öğrenci Görünümü"],
-            state='readonly'
-        )
-        cb.pack(side='left')
-        cb.bind("<<ComboboxSelected>>", self.refresh)
+    def remove_slot(self):
+        selection = self.lst_slots.curselection()
+        if selection: self.lst_slots.delete(selection[0])
 
-        self.search_var = tk.StringVar()
-        self.search_var.trace("w", lambda n,i,m: self.refresh())
-        ttk.Entry(ctrl, textvariable=self.search_var).pack(side='left', padx=5)
-        ttk.Label(ctrl, text="(Filtrele)").pack(side='left')
+    def create_file_row(self, parent, label_text, command_func):
+        f = tk.Frame(parent, bg=self.colors["bg_white"])
+        f.pack(fill='x', pady=5)
+        tk.Label(f, text=label_text, width=25, anchor='w', bg=self.colors["bg_white"]).pack(side='left')
+        ttk.Button(f, text="Select File...", command=command_func).pack(side='left')
+        lbl_status = tk.Label(f, text="Not Selected", fg="#95a5a6", bg=self.colors["bg_white"], font=('Segoe UI', 9, 'italic'))
+        lbl_status.pack(side='left', padx=10)
+        command_func.__func__.status_label = lbl_status
 
-        self.tree = ttk.Treeview(f, columns=('1','2','3','4','5'), show='headings')
-        self.tree.pack(fill='both', expand=True)
+    def build_schedule_tab(self):
+        top_bar = tk.Frame(self.tab_schedule, bg=self.colors["bg_white"], pady=10)
+        top_bar.pack(fill='x', padx=20)
+        tk.Label(top_bar, text="View:", bg=self.colors["bg_white"], font=('Segoe UI', 10, 'bold')).pack(side='left')
+        self.view_var = tk.StringVar(value="Daily Plan")
+        cb = ttk.Combobox(top_bar, textvariable=self.view_var,
+                          values=["General Schedule", "Daily Plan", "Student Based", "Classroom Based"],
+                          state='readonly', width=20)
+        cb.pack(side='left', padx=10)
+        cb.bind("<<ComboboxSelected>>", self.refresh_table)
+        ttk.Button(top_bar, text="Export CSV", command=self.export_to_csv).pack(side='right')
 
-        scrolly = ttk.Scrollbar(f, orient="vertical", command=self.tree.yview)
-        scrolly.pack(side='right', fill='y')
-        self.tree.configure(yscrollcommand=scrolly.set)
+        tree_frame = tk.Frame(self.tab_schedule, bg=self.colors["bg_white"])
+        tree_frame.pack(fill='both', expand=True, padx=20, pady=(0, 20))
+        scrolly = ttk.Scrollbar(tree_frame, orient="vertical")
+        scrollx = ttk.Scrollbar(tree_frame, orient="horizontal")
+        self.tree = ttk.Treeview(tree_frame, show='headings', yscrollcommand=scrolly.set, xscrollcommand=scrollx.set)
+        scrolly.config(command=self.tree.yview)
+        scrollx.config(command=self.tree.xview)
+        scrolly.pack(side="right", fill="y")
+        scrollx.pack(side="bottom", fill="x")
+        self.tree.pack(side="left", fill="both", expand=True)
+        self.set_columns_daily()
 
-    def show_help(self):
-        messagebox.showinfo(
-            "Yardım",
-            " Sistem Özellikleri:\n\n"
-            "1. Otomatik Dengeli Dağıtım: Sınavlar günlere yayılır.\n"
-            "2. Günlük 2 Sınav Limiti (Öğrenci Bazlı).\n"
-            "3. Ardışık Slot Yasağı (Öğrenci Bazlı).\n"
-            "4. Esnek İsimlendirme: Dosya isimleri formatı serbesttir.\n"
-        )
+    # --- ACTIONS ---
+    def imp_rooms(self): self.load_file(self.imp_rooms, self.system.load_classrooms_regex)
+    def imp_courses(self): self.load_file(self.imp_courses, self.system.load_courses_regex)
+    def imp_students(self): self.load_file(self.imp_students, self.system.load_all_students_regex)
 
-    def log(self, msg):
-        self.log_text.config(state='normal')
-        self.log_text.insert(tk.END, "> " + str(msg) + "\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state='disabled')
+    def load_file(self, func_ref, system_method):
+        path = filedialog.askopenfilename(filetypes=[("All Files", "*.*"), ("CSV", "*.csv"), ("TXT", "*.txt")])
+        if path:
+            msg = system_method(path)
+            if hasattr(func_ref, 'status_label'):
+                fname = path.split('/')[-1]
+                if "SUCCESS" in msg or "BAŞARILI" in msg:
+                    color, txt = "#27ae60", f"Loaded ({fname})"
+                else:
+                    color, txt = "#e74c3c", "Error / Empty"
+                func_ref.status_label.config(text=txt, fg=color, font=('Segoe UI', 9, 'bold'))
+            self.lbl_log.config(text=msg)
 
-    def imp_rooms(self):
-        p = filedialog.askopenfilename()
-        if p: self.log(self.system.load_classrooms_regex(p))
-
-    def imp_courses(self):
-        p = filedialog.askopenfilename()
-        if p: self.log(self.system.load_courses_regex(p))
-
-    def imp_students(self):
-        p = filedialog.askopenfilename()
-        if p: self.log(self.system.load_all_students_regex(p))
-
-    def start_thread(self):
-        if not self.system.courses:
-            return messagebox.showerror("Hata", "Dersler eksik!")
-
+    def start_process(self):
+        if not self.system.courses or not self.system.classrooms:
+            return messagebox.showerror("Missing Data", "Please upload required files.")
         try:
-            d_val = int(self.ent_days.get())
-            s_val = int(self.ent_slots.get())
-            self.system.num_days = d_val
-            self.system.slots_per_day = s_val
-            self.log(f"Hesaplama: {d_val} Gün, {s_val} Slot (Dengeli Dağıtım)...")
+            if HAS_CALENDAR: self.start_date = self.ent_date.get_date()
+            else: self.start_date = datetime.strptime(self.ent_date.get(), "%Y-%m-%d").date()
 
-        except ValueError:
-            return messagebox.showerror("Hata", "Lütfen sayı girin!")
+            # --- OTOMATİK SIRALAMA (SORTING) ---
+            # Kullanıcı saatleri karışık girse bile (Örn: 17:00, sonra 09:00)
+            # Biz bunları kronolojik sıraya diziyoruz ki algoritma bozulmasın.
+            raw_slots = list(self.lst_slots.get(0, tk.END))
+            if not raw_slots: return messagebox.showerror("Error", "Add at least one time slot.")
 
-        self.prog_bar.start(10)
-        threading.Thread(target=self.run_logic, daemon=True).start()
+            # Saatleri parse edip sıralıyoruz
+            def parse_slot(s):
+                # "09:00-11:00" -> "09:00" kısmını alıp saate çevir
+                start_time_str = s.split('-')[0].strip()
+                return datetime.strptime(start_time_str, "%H:%M")
+
+            # Sıralanmış listeyi kaydet
+            self.slot_times = sorted(raw_slots, key=parse_slot)
+
+            self.system.num_days = int(self.ent_days.get())
+            self.system.slots_per_day = len(self.slot_times)
+
+            self.status_bar.config(text="Calculating...")
+            self.lbl_log.config(text="Process running...")
+            self.btn_start.config(state='disabled')
+            self.btn_stop.config(state='normal')
+            threading.Thread(target=self.run_logic, daemon=True).start()
+        except Exception as e: messagebox.showerror("Error", str(e))
+
+    def stop_process(self):
+        self.system.stop_event.set()
+        self.status_bar.config(text="Stopping...")
+        self.lbl_log.config(text="Stopping...", fg="red")
 
     def run_logic(self):
         success, msg = self.system.solve()
-        self.root.after(0, lambda: self.finish(success, msg))
+        self.root.after(0, lambda: self.finish_solver(success, msg))
 
-    def finish(self, success, msg):
-        self.prog_bar.stop()
-        self.log(msg)
+    def finish_solver(self, success, msg):
+        self.status_bar.config(text=msg)
+        self.btn_start.config(state='normal')
+        self.btn_stop.config(state='disabled')
         if success:
-            messagebox.showinfo("Bitti", msg)
-            self.notebook.select(self.tab_results)
-            self.refresh()
+            messagebox.showinfo("Success", msg)
+            self.notebook.select(self.tab_schedule)
+            self.refresh_table()
         else:
-            messagebox.showerror("Hata", msg)
+            if "Durdur" in msg or "Stopped" in msg: messagebox.showwarning("Cancelled", msg)
+            else: messagebox.showerror("Failed", msg)
 
-    def refresh(self, _=None):
+    # Table Helpers
+    def get_real_datetime(self, d, s):
+        date = self.start_date + timedelta(days=d)
+        time = self.slot_times[s] if s < len(self.slot_times) else "??"
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        return f"{date.strftime('%Y-%m-%d')} ({days[date.weekday()]}) {time}"
+
+    def get_day_and_date(self, d):
+        date = self.start_date + timedelta(days=d)
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        return f"{date.strftime('%Y-%m-%d')} ({days[date.weekday()]})"
+
+    def set_columns_general(self):
+        cols = ["Course", "Time", "Count", "Classroom", "Capacity"]
+        self.tree['columns'] = cols
+        for c in cols: self.tree.heading(c, text=c)
+        self.tree.column("Course", width=120, anchor='center')
+        self.tree.column("Time", width=250)
+        self.tree.column("Count", width=80, anchor='center')
+        self.tree.column("Classroom", width=150)
+        self.tree.column("Capacity", width=100, anchor='center')
+
+    def set_columns_daily(self):
+        cols = ["Day", "Time", "Course", "Classroom", "Students"]
+        self.tree['columns'] = cols
+        for c in cols: self.tree.heading(c, text=c)
+        self.tree.column("Day", width=180, anchor='w')
+        self.tree.column("Time", width=80, anchor='center')
+        self.tree.column("Course", width=120, anchor='center')
+        self.tree.column("Classroom", width=150, anchor='w')
+        self.tree.column("Students", width=80, anchor='center')
+
+    def set_columns_student(self):
+        cols = ["Student", "Course", "Time", "Classroom"]
+        self.tree['columns'] = cols
+        for c in cols: self.tree.heading(c, text=c)
+        self.tree.column("Student", width=150, anchor='center')
+        self.tree.column("Course", width=150, anchor='center')
+        self.tree.column("Time", width=250, anchor='w')
+        self.tree.column("Classroom", width=100, anchor='center')
+
+    def set_columns_classroom(self):
+        cols = ["Classroom", "Time", "Course", "Status"]
+        self.tree['columns'] = cols
+        for c in cols: self.tree.heading(c, text=c)
+        self.tree.column("Classroom", width=100, anchor='center')
+        self.tree.column("Time", width=250, anchor='w')
+        self.tree.column("Course", width=150, anchor='center')
+        self.tree.column("Status", width=100, anchor='center')
+
+    def refresh_table(self, event=None):
         for i in self.tree.get_children(): self.tree.delete(i)
-
+        self.full_data = []
         mode = self.view_var.get()
-        flt = self.search_var.get().upper()
-        data = []
 
-        if mode == "Günlük Görünüm":
-            headers = ["Gün", "Slot", "Ders Kodu", "Sınıflar", "Mevcut"]
-            all_assignments = []
+        if mode == "General Schedule":
+            self.set_columns_general()
             for c_code, (d, s, rooms) in self.system.assignments.items():
-                if flt and flt not in c_code: continue
-                room_names = " + ".join([r.code for r in rooms])
-                course_obj = next((c for c in self.system.courses if c.code == c_code), None)
-                st_count = len(course_obj.students) if course_obj else 0
-                all_assignments.append((d, s, c_code, room_names, st_count))
-
-            all_assignments.sort(key=lambda x: (x[0], x[1]))
-            for (d, s, c_code, r_names, count) in all_assignments:
-                data.append((f"Gün {d+1}", f"Slot {s+1}", c_code, r_names, count))
-
-        elif mode == "Ders Görünümü":
-            headers = ["Ders Kodu", "Mevcut / Top. Kapasite", "Zaman", "Atanan Sınıflar", "-"]
-            for c_code, (d, s, rooms) in self.system.assignments.items():
-                if flt and flt not in c_code: continue
-                room_names = " + ".join([r.code for r in rooms])
-                total_cap = sum(r.capacity for r in rooms)
-                course_obj = next((c for c in self.system.courses if c.code == c_code), None)
-                st_count = len(course_obj.students) if course_obj else 0
-                data.append((c_code, f"{st_count} / {total_cap}", f"G{d+1}/S{s+1}", room_names, ""))
-
-        elif mode == "Sınıf Görünümü":
-            headers = ["Sınıf", "Ders", "Zaman", "Durum", "-"]
+                c = next((x for x in self.system.courses if x.code == c_code), None)
+                st_cnt = len(c.students) if c else 0
+                r_names = ", ".join([r.code for r in rooms])
+                cap = f"{st_cnt} / {sum(r.capacity for r in rooms)}"
+                self.full_data.append((c_code, self.get_real_datetime(d,s), st_cnt, r_names, cap))
+        elif mode == "Daily Plan":
+            self.set_columns_daily()
+            sorted_items = sorted(self.system.assignments.items(), key=lambda item: (item[1][0], item[1][1]))
+            for c_code, (d, s, rooms) in sorted_items:
+                c = next((x for x in self.system.courses if x.code == c_code), None)
+                st_cnt = len(c.students) if c else 0
+                r_names = ", ".join([r.code for r in rooms])
+                self.full_data.append((self.get_day_and_date(d), self.slot_times[s], c_code, r_names, st_cnt))
+        elif mode == "Student Based":
+            self.set_columns_student()
+            temp_data = []
+            for (sid, c_code), r_code in self.system.student_room_map.items():
+                if c_code in self.system.assignments:
+                    d, s, _ = self.system.assignments[c_code]
+                    temp_data.append((sid, c_code, self.get_real_datetime(d, s), r_code))
+            temp_data.sort(key=lambda x: (x[0], x[2]))
+            self.full_data = temp_data
+        elif mode == "Classroom Based":
+            self.set_columns_classroom()
             for c_code, (d, s, rooms) in self.system.assignments.items():
                 for r in rooms:
-                    if flt and flt not in r.code: continue
-                    data.append((r.code, c_code, f"G{d+1}/S{s+1}", "Dolu", ""))
+                    self.full_data.append((r.code, self.get_real_datetime(d,s), c_code, "OCCUPIED"))
+            self.full_data.sort()
+        for row in self.full_data: self.tree.insert('', 'end', values=row)
 
-        elif mode == "Öğrenci Görünümü":
-            headers = ["Öğrenci ID", "Ders", "Zaman", "GİDECEĞİ SINIF", "Durum"]
-            all_st = sorted(list(self.system.all_students_list))
-            if not all_st:
-                tmp = set()
-                for c in self.system.courses: tmp.update(c.students)
-                all_st = sorted(list(tmp))
-
-            for sid in all_st:
-                if flt and flt not in sid: continue
-                student_exams = []
-                for (s_id_key, c_code), r_code in self.system.student_room_map.items():
-                    if s_id_key == sid:
-                        if c_code in self.system.assignments:
-                            d, s, _ = self.system.assignments[c_code]
-                            student_exams.append((c_code, d, s, r_code))
-
-                if student_exams:
-                    student_exams.sort(key=lambda x: (x[1], x[2]))
-                    for (code, d, s, r) in student_exams:
-                        data.append((sid, code, f"G{d+1}/S{s+1}", r, "Sınav Var"))
-
-        for i, h in enumerate(headers):
-            self.tree.heading(str(i+1), text=h)
-        if mode != "Günlük Görünüm": data.sort()
-        for row in data: self.tree.insert('', 'end', values=row)
+    def export_to_csv(self):
+        if not self.full_data: return messagebox.showwarning("Warning", "No data to export.")
+        view_name = self.view_var.get().replace(" ", "_")
+        default_name = f"Schedule_{view_name}.csv"
+        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=default_name, filetypes=[("CSV Files", "*.csv")])
+        if path:
+            try:
+                with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.writer(f, delimiter=';')
+                    writer.writerow(self.tree['columns'])
+                    writer.writerows(self.full_data)
+                messagebox.showinfo("Success", f"Data exported successfully!\nPlan: {self.view_var.get()}")
+            except Exception as e: messagebox.showerror("Error", f"Export failed:\n{str(e)}")
