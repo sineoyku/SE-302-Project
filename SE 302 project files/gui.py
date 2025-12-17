@@ -1,5 +1,9 @@
 # gui.py
 import tkinter as tk
+import csv
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.lib import colors
 from tkinter import ttk, filedialog, messagebox
 import threading
 from logic import ScheduleSystem
@@ -22,6 +26,9 @@ class ExamSchedulerApp:
         help_menu.add_command(label="Yardım", command=self.show_help)
         menubar.add_cascade(label="Yardım", menu=help_menu)
         self.root.config(menu=menubar)
+        file_menu.add_command(label="CSV'ye Aktar (Görünen Tablo)", command=self.export_current_view_to_csv)
+        file_menu.add_command(label="PDF'ye Aktar (Görünen Tablo)", command=self.export_current_view_to_pdf)
+        file_menu.add_separator()
 
     def setup_ui(self):
         notebook = ttk.Notebook(self.root)
@@ -232,3 +239,91 @@ class ExamSchedulerApp:
             self.tree.heading(str(i+1), text=h)
         if mode != "Günlük Görünüm": data.sort()
         for row in data: self.tree.insert('', 'end', values=row)
+        self.last_headers = headers
+        self.last_rows = data
+
+    def export_current_view_to_csv(self):
+        if not getattr(self.system, "assignments", None):
+            return messagebox.showerror("Hata", "Önce 'HESAPLA' ile program oluşturun.")
+
+        # if refresh did not work (if last_rows do not exist ) we upgrade
+        if not hasattr(self, "last_rows") or not hasattr(self, "last_headers"):
+            self.refresh()
+
+        if not self.last_rows:
+            return messagebox.showerror("Hata", "Dışa aktarılacak veri yok (filtre boş olabilir).")
+
+        default_name = "export.csv"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            initialfile=default_name,
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+        )
+        if not path:
+            return  # if the user cancels
+
+        try:
+            # karakter uyumu için bu
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                w = csv.writer(f, delimiter=",")
+                w.writerow(self.last_headers)
+                for row in self.last_rows:
+                    w.writerow(list(row))
+
+            self.log(f"Export tamam: {path}")
+            messagebox.showinfo("Başarılı", f"CSV kaydedildi:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Export başarısız: {e}")
+
+    def export_current_view_to_pdf(self):
+        if not getattr(self.system, "assignments", None):
+            return messagebox.showerror("Hata", "Önce 'HESAPLA' ile program oluşturun.")
+
+        if not hasattr(self, "last_rows") or not hasattr(self, "last_headers"):
+            self.refresh()
+
+        if not self.last_rows:
+            return messagebox.showerror("Hata", "Dışa aktarılacak veri yok (filtre boş olabilir).")
+
+        default_name = "export.pdf"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            initialfile=default_name,
+            filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")]
+        )
+        if not path:
+            return
+
+        try:
+            doc = SimpleDocTemplate(
+                path,
+                pagesize=landscape(A4),
+                leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=24
+            )
+
+            # Başlık satırı + veri satırları
+            table_data = [[self._to_ascii(h) for h in self.last_headers]] + \
+                         [[self._to_ascii(x) for x in r] for r in self.last_rows]
+
+            tbl = Table(table_data, repeatRows=1)
+
+            tbl.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+            ]))
+
+            doc.build([tbl])
+
+            self.log(f"PDF Export tamam: {path}")
+            messagebox.showinfo("Başarılı", f"PDF kaydedildi:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Hata", f"PDF export başarısız: {e}")
+
+    def _to_ascii(self, s):
+        tr_map = str.maketrans("ÇĞİÖŞÜçğıöşü", "CGIOSUcgiosu")
+        return str(s).translate(tr_map)
