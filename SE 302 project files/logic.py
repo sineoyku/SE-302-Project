@@ -1,12 +1,18 @@
 import threading
 import time
 import random
+import os
+
+from db import DB
 from collections import defaultdict
+from models import Course, Classroom
 import data_access
 
 class ScheduleSystem:
     def __init__(self):
         self.reset_data()
+        db_path = os.path.join(os.path.dirname(__file__), "examtable.db")
+        self.db = DB(db_path)
 
     def reset_data(self):
         self.courses = []
@@ -111,6 +117,31 @@ class ScheduleSystem:
                 for stud in seated:
                     self.student_room_map[(stud, c_code)] = room.code
                 if student_idx >= len(students_to_seat): break
+
+    def save_data_to_db(self):
+        # classrooms
+        cls = [(r.code, r.capacity) for r in self.classrooms]
+        self.db.save_classrooms(cls)
+
+        # courses + course_students
+        crs = [(c.code, c.students) for c in self.courses]
+        self.db.save_courses_and_students(crs)
+
+        # students (AYRI TABLO)
+        if self.all_students_list:
+            self.db.save_students(self.all_students_list)
+
+    def load_data_from_db(self):
+        # classrooms
+        cls = self.db.load_classrooms()
+        self.classrooms = [Classroom(code, cap) for code, cap in cls]
+        # students
+        students = self.db.load_students()
+        self.all_students_list = set(students)
+
+        # courses + students
+        crs = self.db.load_courses_with_students()
+        self.courses = [Course(code, students) for code, students in crs]
 
     def solve(self):
         self.assignments = {}

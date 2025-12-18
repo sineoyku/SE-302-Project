@@ -118,6 +118,10 @@ class ExamSchedulerApp:
         self.create_file_row(frame_files, "Classroom List:", self.imp_rooms)
         self.create_file_row(frame_files, "Course List:", self.imp_courses)
         self.create_file_row(frame_files, "Student List:", self.imp_students)
+        ttk.Separator(frame_files, orient="horizontal").pack(fill="x", pady=10)
+
+        ttk.Button(frame_files, text="💾 Save Files", command=self.save_to_db).pack(anchor="w", pady=3)
+        ttk.Button(frame_files, text="📥 Load Files", command=self.load_from_db).pack(anchor="w", pady=3)
 
         frame_time = tk.LabelFrame(container, text="2. Exam Calendar Settings", **lf_style)
         frame_time.pack(side='top', fill='both', expand=True, pady=(0, 10))
@@ -233,6 +237,39 @@ class ExamSchedulerApp:
                     color, txt = "#e74c3c", "Error / Empty"
                 func_ref.status_label.config(text=txt, fg=color, font=('Segoe UI', 9, 'bold'))
             self.lbl_log.config(text=msg)
+    def save_to_db(self):
+        try:
+            self.system.save_data_to_db()
+            self.lbl_log.config(text="Saved classrooms/courses/students to DB.", fg=self.colors["success"])
+            messagebox.showinfo("Database", "Saved to database successfully.")
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Save failed:\n{e}")
+
+    def load_from_db(self):
+        try:
+            self.system.load_data_from_db()
+
+            c_count = len(self.system.classrooms)
+            crs_count = len(self.system.courses)
+            students_count = len(self.system.all_students_list)
+            messagebox.showinfo("Database",
+                                f"Loaded ✅\nClassrooms: {c_count}\nCourses: {crs_count}\nStudents: {students_count}")
+
+            if c_count == 0 or crs_count == 0:
+                messagebox.showwarning(
+                    "Database",
+                    f"DB'den veri gelmedi.\nClassrooms: {c_count}\nCourses: {crs_count}\n\n"
+                    "Muhtemelen farklı klasörde başka examtable.db açıyorsun (relative path)."
+                )
+                return
+
+            # ekranda da görünsün
+            self.lbl_log.config(text=f"Loaded from DB ✅ Classrooms={c_count}, Courses={crs_count}",
+                                fg=self.colors["success"])
+            messagebox.showinfo("Database", f"Loaded ✅\nClassrooms: {c_count}\nCourses: {crs_count}")
+
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Load failed:\n{e}")
 
     def start_process(self):
         if not self.system.courses or not self.system.classrooms:
