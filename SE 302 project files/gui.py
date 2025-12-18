@@ -156,8 +156,91 @@ class ExamSchedulerApp:
         lf_cfg = ttk.LabelFrame(f, text="Ayarlar", padding=10)
         lf_cfg.grid(row=0, column=0, columnspan=2, sticky='ew', pady=5)
 
+<<<<<<< Updated upstream
         ttk.Label(lf_cfg, text="Gün:").pack(side='left')
         self.ent_days = ttk.Entry(lf_cfg, width=5)
+=======
+        self.style.configure("TButton", font=('Segoe UI', 9))
+        self.style.configure("TNotebook", background=self.colors["bg_main"], borderwidth=0)
+        self.style.configure("TNotebook.Tab", font=('Segoe UI', 10, 'bold'), padding=[20, 10],
+                             background="#cfd8dc", foreground=self.colors["text_body"])
+        self.style.map("TNotebook.Tab", background=[('selected', self.colors["primary"])],
+                       foreground=[('selected', self.colors["bg_white"])])
+
+    def build_layout(self):
+        header_frame = tk.Frame(self.root, bg=self.colors["bg_white"], height=80)
+        header_frame.pack(fill='x', side='top')
+        tk.Frame(header_frame, bg=self.colors["accent_line"], height=2).pack(side='bottom', fill='x')
+
+        lbl_title = tk.Label(header_frame, text="EXAMTABLE MANAGER", font=('Segoe UI', 20, 'bold'),
+                             bg=self.colors["bg_white"], fg=self.colors["primary"])
+        lbl_title.pack(pady=20)
+        
+        ##help menu
+        help_btn = ttk.Button(header_frame, text="? Help", command=self.show_help)
+        help_btn.place(relx=0.98, rely=0.5, anchor='e')
+
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill='both', expand=True, padx=20, pady=20)
+
+        self.tab_config = tk.Frame(self.notebook, bg=self.colors["bg_white"])
+        self.tab_schedule = tk.Frame(self.notebook, bg=self.colors["bg_white"])
+
+        self.notebook.add(self.tab_config, text="SETTINGS & DATA")
+        self.notebook.add(self.tab_schedule, text="SCHEDULE (RESULT)")
+
+        self.build_config_tab()
+        self.build_schedule_tab()
+
+        self.status_bar = tk.Label(self.root, text="System Ready", bd=1, relief=tk.FLAT, anchor=tk.W,
+                                   bg="#cfd8dc", fg=self.colors["text_body"], padx=10, pady=5)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def build_config_tab(self):
+
+        bottom_area = tk.Frame(self.tab_config, bg=self.colors["bg_white"], pady=15)
+        bottom_area.pack(side='bottom', fill='x')
+
+        self.btn_start = ttk.Button(bottom_area, text="GENERATE SCHEDULE", style="Big.Accent.TButton", command=self.start_process)
+        self.btn_start.pack(side='left', expand=True, padx=10, ipadx=40, ipady=10) # expand=True ile ortaladık
+
+        self.btn_stop = ttk.Button(bottom_area, text="STOP", command=self.stop_process, state='disabled')
+        self.btn_stop.pack(side='left', expand=True, padx=10, ipadx=20, ipady=10)
+
+        self.lbl_log = tk.Label(self.tab_config, text="", bg=self.colors["bg_white"], fg=self.colors["primary"])
+        self.lbl_log.pack(side='bottom', pady=(0, 5))
+
+        container = tk.Frame(self.tab_config, bg=self.colors["bg_white"])
+        container.pack(side='top', fill='both', expand=True, padx=40, pady=20)
+
+        lf_style = {"font": ('Segoe UI', 11, 'bold'), "bg": self.colors["bg_white"],
+                    "fg": self.colors["primary"], "padx": 20, "pady": 15}
+
+        frame_files = tk.LabelFrame(container, text="1. Data Files (CSV/TXT)", **lf_style)
+        frame_files.pack(side='top', fill='x', pady=(0, 20), anchor='n')
+
+        self.create_file_row(frame_files, "Classroom List:", self.imp_rooms)
+        self.create_file_row(frame_files, "Course List:", self.imp_courses)
+        self.create_file_row(frame_files, "Student List:", self.imp_students)
+
+        frame_time = tk.LabelFrame(container, text="2. Exam Calendar Settings", **lf_style)
+        frame_time.pack(side='top', fill='both', expand=True, pady=(0, 10))
+
+        row_date = tk.Frame(frame_time, bg=self.colors["bg_white"])
+        row_date.pack(fill='x', pady=5)
+
+        tk.Label(row_date, text="Start Date:", bg=self.colors["bg_white"], width=10, anchor='w').pack(side='left')
+        if HAS_CALENDAR:
+            self.ent_date = DateEntry(row_date, width=15, background=self.colors["primary"], foreground='white', date_pattern='yyyy-mm-dd')
+            self.ent_date.pack(side='left', padx=(0, 20))
+        else:
+            self.ent_date = ttk.Entry(row_date, width=15)
+            self.ent_date.insert(0, datetime.now().strftime("%Y-%m-%d"))
+            self.ent_date.pack(side='left', padx=(0, 20))
+
+        tk.Label(row_date, text="Duration (Days):", bg=self.colors["bg_white"], width=12, anchor='w').pack(side='left')
+        self.ent_days = ttk.Entry(row_date, width=5)
+>>>>>>> Stashed changes
         self.ent_days.insert(0, "7")
         self.ent_days.pack(side='left', padx=5)
 
@@ -391,6 +474,7 @@ class ExamSchedulerApp:
                         continue
                     data.append((r.code, c_code, f"G{d+1}/S{s+1}", "Dolu", ""))
 
+<<<<<<< Updated upstream
         elif mode == "Öğrenci Görünümü":
             headers = ["Öğrenci ID", "Ders", "Zaman", "GİDECEĞİ SINIF", "Durum"]
             all_st = sorted(list(self.system.all_students_list))
@@ -449,3 +533,24 @@ class ExamSchedulerApp:
         
         for row in filtered:
             self.tree.insert('', 'end', values=row)
+=======
+    def export_to_csv(self):
+        if not self.full_data: return messagebox.showwarning("Warning", "No data to export.")
+        view_name = self.view_var.get().replace(" ", "_")
+        default_name = f"Schedule_{view_name}.csv"
+        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=default_name, filetypes=[("CSV Files", "*.csv")])
+        if path:
+            try:
+                with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.writer(f, delimiter=';')
+                    writer.writerow(self.tree['columns'])
+                    writer.writerows(self.full_data)
+                messagebox.showinfo("Success", f"Data exported successfully!\nPlan: {self.view_var.get()}")
+            except Exception as e: messagebox.showerror("Error", f"Export failed:\n{str(e)}")
+    def show_help(self):
+        help_text = """
+    EXAMTABLE MANAGER - User Guide
+    tba
+        """
+        messagebox.showinfo("Help", help_text)
+>>>>>>> Stashed changes
