@@ -72,13 +72,14 @@ class ExamSchedulerApp:
         header_frame.pack(fill='x', side='top')
         tk.Frame(header_frame, bg=self.colors["accent_line"], height=2).pack(side='bottom', fill='x')
 
-        title_holder = tk.Frame(self.root)
+        title_holder = tk.Frame(header_frame, bg=self.colors["bg_white"])
+        title_holder.pack(fill='both', expand=True)
         lbl_title = tk.Label(title_holder, text="EXAMTABLE MANAGER", font=('Segoe UI', 24, 'bold'),bg=self.colors["bg_white"], fg=self.colors["primary"])
-        lbl_title.pack(side='left')
+        lbl_title.pack(side='left', padx=20, pady=15)
         
         #help button
-        help_btn = ttk.Button(header_frame, text="? Help", command=self.show_help)
-        help_btn.place(relx=0.98, rely=0.5, anchor='e')
+        help_btn = ttk.Button(title_holder, text="? Help", command=self.show_help)
+        help_btn.pack(side='right', padx=20, pady=15)
     
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill='both', expand=True, padx=20, pady=20)
@@ -589,8 +590,82 @@ class ExamSchedulerApp:
         for row in self.full_data: self.tree.insert('', 'end', values=row)
 
     def export_to_csv(self):
-        if not self.full_data: return messagebox.showwarning("Warning", "No data to export.")
         view_name = self.view_var.get()
+        
+        # If Daily Plan view, ask whether to export current day or all days
+        if view_name == "Daily Plan":
+            if not hasattr(self, 'day_groups') or not self.day_groups:
+                return messagebox.showwarning("Warning", "No data to export.")
+            
+            export_choice = messagebox.askyesnocancel("Export Options", 
+                "Export current day (Yes) or all days (No)?")
+            if export_choice is None:
+                return
+            
+            if export_choice:  # Export current day only
+                # Get current selected date from day_search_frame
+                current_date = None
+                if hasattr(self, 'day_search_frame'):
+                    for widget in self.day_search_frame.winfo_children():
+                        if isinstance(widget, tk.Entry):
+                            current_date = widget.get()
+                            break
+                        elif hasattr(widget, 'get'):
+                            try:
+                                current_date = widget.get()
+                                if current_date:
+                                    break
+                            except:
+                                pass
+                
+                if not current_date:
+                    current_date = next(iter(self.day_groups.keys()), None)
+                
+                if not current_date or current_date not in self.day_groups:
+                    return messagebox.showwarning("Warning", "No current day selected.")
+                
+                default_name = f"Schedule_Daily_{current_date}.csv"
+                path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=default_name, filetypes=[("CSV Files", "*.csv")])
+                if not path:
+                    return
+                
+                try:
+                    with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+                        writer = csv.writer(f, delimiter=';')
+                        cols = ["Time", "Course", "Classroom", "Students"]
+                        writer.writerow(cols)
+                        rows = self.day_groups.get(current_date, [])
+                        for time_str, c_code, r_names, st_cnt in rows:
+                            writer.writerow([time_str, c_code, r_names, st_cnt])
+                    messagebox.showinfo("Success", f"Daily schedule exported: {current_date}")
+                    self.append_log(f"Exported CSV for {current_date}: {path}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Export failed:\n{str(e)}")
+                    self.append_log(f"Export failed: {str(e)}")
+            else:  # Export all days
+                default_name = f"Schedule_AllDays.csv"
+                path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=default_name, filetypes=[("CSV Files", "*.csv")])
+                if not path:
+                    return
+                
+                try:
+                    with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+                        writer = csv.writer(f, delimiter=';')
+                        cols = ["Date", "Time", "Course", "Classroom", "Students"]
+                        writer.writerow(cols)
+                        for date_str in sorted(self.day_groups.keys()):
+                            rows = self.day_groups[date_str]
+                            for time_str, c_code, r_names, st_cnt in rows:
+                                writer.writerow([date_str, time_str, c_code, r_names, st_cnt])
+                    messagebox.showinfo("Success", f"All daily schedules exported!")
+                    self.append_log(f"Exported CSV for all days: {path}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Export failed:\n{str(e)}")
+                    self.append_log(f"Export failed: {str(e)}")
+            return
+        
+        if not self.full_data: return messagebox.showwarning("Warning", "No data to export.")
+        
         # If Student Based view, ask whether to export only the currently shown student
         if view_name == "Student Based":
             only_one = messagebox.askyesno("Export Options", "Export only the currently shown student (Yes) or all students (No)?")
@@ -649,11 +724,124 @@ class ExamSchedulerApp:
             self.append_log(f"Export failed: {str(e)}")
             
     def show_help(self):
-        help_text = """
-    EXAMTABLE MANAGER - Help Menu
-    TBA
-    """
-        messagebox.showinfo("Help", help_text)
+        help_window = tk.Toplevel(self.root)
+        help_window.title("Help - Examtable Manager")
+        help_window.geometry("700x600")
+        help_window.resizable(True, True)
+        
+        # Help content pages
+        help_pages = {
+            "index": {
+                "title": "Help Menu",
+                "content": "EXAMTABLE MANAGER - Help Topics\n\nClick on any topic below for detailed help:\n\n1. Uploading Data Files\n2. Setting Exam Calendar\n3. Generating Time Slots\n4. Creating Schedule\n5. Exporting Results",
+                "links": [
+                    ("Uploading Data Files", "upload"),
+                    ("Setting Exam Calendar", "calendar"),
+                    ("Generating Time Slots", "slots"),
+                    ("Creating Schedule", "schedule"),
+                    ("Exporting Results", "export")
+                ]
+            },
+            "upload": {
+                "title": "Uploading Data Files",
+                "content": "UPLOADING DATA FILES\n\n1. Click 'Select File...' next to Classroom List\n2. Choose your CSV or TXT file\n3. Repeat for Course List and Student List\n4. Green status indicates successful upload\n\nFile Format:\n- Classroom List: classroom_code, capacity\n- Course List: course_code, student_count\n- Student List: student_id, course_code",
+                "links": []
+            },
+            "calendar": {
+                "title": "Setting Exam Calendar",
+                "content": "SETTING EXAM CALENDAR\n\n1. Choose Start Date using the date picker\n2. Set Duration (number of days for exams)\n3. Click 'Generate Schedule' when ready\n\nTips:\n- Start Date: When your exams begin\n- Duration: Total number of days for all exams",
+                "links": []
+            },
+            "slots": {
+                "title": "Generating Time Slots",
+                "content": "GENERATING TIME SLOTS\n\n1. Set Start Time (e.g., 09:00)\n2. Set End Time (e.g., 17:00)\n3. Set Slot Duration in minutes (e.g., 60)\n4. Click '⚡ Generate Slots'\n\nExample:\n- Start: 09:00\n- End: 17:00\n- Duration: 60 min\n- Result: 09:00-10:00, 10:00-11:00, etc.",
+                "links": []
+            },
+            "schedule": {
+                "title": "Creating Schedule",
+                "content": "CREATING SCHEDULE\n\n1. Upload all required data files\n2. Configure calendar and time slots\n3. Click 'GENERATE SCHEDULE'\n\nThe system will automatically:\n- Assign courses to time slots\n- Allocate appropriate classrooms\n- Avoid scheduling conflicts\n- Respect classroom capacity\n\nView results in multiple formats after generation.",
+                "links": []
+            },
+            "export": {
+                "title": "Exporting Results",
+                "content": "EXPORTING RESULTS\n\n1. Go to 'SCHEDULE (RESULT)' tab\n2. Select desired view format:\n   - General Schedule: Overview of all exams\n   - Daily Plan: Organized by day\n   - Student Based: View by student\n   - Classroom Based: View by classroom\n3. Click 'Export CSV'\n4. Choose location to save",
+                "links": []
+            }
+        }
+        
+        # Current page tracking
+        current_page = {"page": "index"}
+        
+        # Title
+        title_label = tk.Label(help_window, text="Help Menu", font=('Segoe UI', 16, 'bold'),
+                            bg=self.colors["bg_white"], fg=self.colors["primary"])
+        title_label.pack(fill='x', padx=20, pady=15)
+        
+        # Content frame
+        content_frame = tk.Frame(help_window, bg=self.colors["bg_white"])
+        content_frame.pack(fill='both', expand=True, padx=20, pady=(0, 20))
+        
+        scrollbar = ttk.Scrollbar(content_frame)
+        scrollbar.pack(side='right', fill='y')
+        
+        help_text = tk.Text(content_frame, wrap='word', font=('Segoe UI', 10),
+                        bg=self.colors["bg_white"], fg=self.colors["text_body"],
+                        yscrollcommand=scrollbar.set, relief='flat', borderwidth=0, height=20)
+        scrollbar.config(command=help_text.yview)
+        help_text.pack(fill='both', expand=True)
+        
+        # Configure tags
+        help_text.tag_configure("link", foreground="blue", underline=True)
+        help_text.tag_bind("link", "<Enter>", lambda e: help_text.config(cursor="hand2"))
+        help_text.tag_bind("link", "<Leave>", lambda e: help_text.config(cursor="arrow"))
+        
+        # Navigation frame
+        nav_frame = tk.Frame(help_window, bg=self.colors["bg_white"])
+        nav_frame.pack(fill='x', padx=20, pady=10)
+        
+        btn_back = ttk.Button(nav_frame, text="← Back to Index")
+        btn_back.pack(side='left', padx=5)
+        
+        close_btn = ttk.Button(nav_frame, text="Close", command=help_window.destroy)
+        close_btn.pack(side='right', padx=5)
+        
+        # Load page function
+        def load_page(page_key):
+            help_text.config(state='normal')
+            help_text.delete('1.0', tk.END)
+            
+            page = help_pages.get(page_key, help_pages["index"])
+            current_page["page"] = page_key
+            
+            # Update title
+            title_label.config(text=page["title"])
+            
+            # Add content
+            help_text.insert('end', page["content"] + "\n\n")
+            
+            # Add links if any
+            if page["links"]:
+                help_text.insert('end', "\n--- Related Topics ---\n\n")
+                for link_text, link_page in page["links"]:
+                    # Create unique tag for each link
+                    unique_tag = f"link_{link_page}"
+                    help_text.tag_configure(unique_tag, foreground="blue", underline=True)
+                    help_text.tag_bind(unique_tag, "<Enter>", lambda e: help_text.config(cursor="hand2"))
+                    help_text.tag_bind(unique_tag, "<Leave>", lambda e: help_text.config(cursor="arrow"))
+                    help_text.tag_bind(unique_tag, "<Button-1>", lambda e, lp=link_page: load_page(lp))
+                    
+                    help_text.insert('end', f"• {link_text}\n", unique_tag)
+            
+            help_text.config(state='disabled')
+            
+            # Update navigation buttons
+            btn_back.config(state='normal' if page_key != "index" else 'disabled')
+        
+        # Set back button command
+        btn_back.config(command=lambda: load_page("index"))
+        
+        # Load initial page
+        load_page("index")
 
     def append_log(self, text):
         """Append a timestamped entry to the activity log (read-only Text widget)."""
