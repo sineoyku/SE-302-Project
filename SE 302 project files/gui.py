@@ -4,6 +4,7 @@ import threading
 import csv
 import re
 from datetime import datetime, timedelta
+import subprocess
 
 try:
     from tkcalendar import DateEntry
@@ -415,8 +416,8 @@ class ExamSchedulerApp:
             except Exception as e: messagebox.showerror("Error", f"Export failed:\n{str(e)}")
             
     def show_help(self):
-        help_text = """
-    EXAMTABLE MANAGER - Help Menu
-    TBA
-    """
-        messagebox.showinfo("Help", help_text)
+        pdf_path = "/Users/aysenazgelen/Desktop/automataass.pdf"
+        try:
+            subprocess.Popen(['open', pdf_path])
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open PDF: {str(e)}")
