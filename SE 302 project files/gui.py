@@ -72,8 +72,8 @@ class ExamSchedulerApp:
         header_frame.pack(fill='x', side='top')
         tk.Frame(header_frame, bg=self.colors["accent_line"], height=2).pack(side='bottom', fill='x')
 
-        lbl_title = tk.Label(title_holder, text="EXAMTABLE MANAGER", font=('Segoe UI', 24, 'bold'),
-                             bg=self.colors["bg_white"], fg=self.colors["primary"])
+        title_holder = tk.Frame(self.root)
+        lbl_title = tk.Label(title_holder, text="EXAMTABLE MANAGER", font=('Segoe UI', 24, 'bold'),bg=self.colors["bg_white"], fg=self.colors["primary"])
         lbl_title.pack(side='left')
         
         #help button
